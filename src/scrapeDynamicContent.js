@@ -1,127 +1,73 @@
-const fs = require("fs");
 const puppeteer = require("puppeteer");
-const { exportProductsToCsv } = require("../utils/scrapingUtils");
-
-
-// Sanitize product titles by replacing special characters
-const sanitizeTitle = (title) => {
-  if (!title) return "";
-  return title.replace(/,/g, "").replace(/\|/g, "").replace(/"/g, '""');
-};
-
+const { exportDataToCsv } = require("../utils/scrapingUtils");
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: false, // Set to true to run in headless mode
     defaultViewport: null,
-    userDataDir: "./tmp",
+    userDataDir: "./tmp", // Save browser session data to the tmp folder
   });
   const page = await browser.newPage();
 
-  await page.goto(
-    "https://www.amazon.com/s?i=software-intl-ship&bbn=16225008011&rh=n%3A229677&dc&ds=v1%3AG0kY76%2FaHs08UinD2VVSW3LrscCe4gqh1KNp%2Bkxlo6o&qid=1721625356&rnid=85457740011&ref=sr_nr_p_123_1"
-  );
+  await page.goto("https://quotes.toscrape.com/js/page/1/"); // URL to scrape
 
+  let isLastPage = false;
+  const quotes = [];
 
-  let isDisabled = false;
-  const products = [];
-
-
-  // Function to extract product details
-  const extractProductDetails = async (product) => {
-    const productTitle = await page.evaluate((el) => {
-      const titleElement = el.querySelector("h2 > a > span");
-      return titleElement ? titleElement.textContent : null;
-    }, product);
-
-
-    const totalPrice = await page.evaluate((el) => {
-      const priceElement = el.querySelector(".a-price .a-offscreen");
-      return priceElement ? priceElement.textContent : null;
-    }, product);
-
-
-    const imageUrl = await page.evaluate((el) => {
-      const imageElement = el.querySelector("img");
-      return imageElement ? imageElement.src : null;
-    }, product);
-
-
-    // Sanitize the product title
-    const sanitizedTitle = sanitizeTitle(productTitle);
-
-
-    return { productTitle: sanitizedTitle, totalPrice, imageUrl };
+  // Function to extract quote details
+  const extractQuoteDetails = async (quoteElement) => {
+    const text = await page.evaluate((el) => {
+      const textElement = el.querySelector(".text"); // Get the quote text element
+      return textElement ? textElement.textContent : null;
+    }, quoteElement);
+  
+    const author = await page.evaluate((el) => {
+      const authorElement = el.querySelector(".author"); // Get the author element
+      return authorElement ? authorElement.textContent : null;
+    }, quoteElement);
+  
+    const tags = await page.evaluate((el) => {
+      const tagElements = el.querySelectorAll(".tag"); // Get all tag elements
+      return Array.from(tagElements).map(tag => tag.textContent);
+    }, quoteElement);
+  
+    return { text: text, author, tags };
   };
 
-
-  // Function to remove duplicate products
-  const removeDuplicates = (products) => {
-    const seen = new Set();
-    return products.filter(product => {
-      const duplicate = seen.has(product.productTitle);
-      seen.add(product.productTitle);
-      return !duplicate;
-    });
-  };
-
-
-  while (!isDisabled) {
-    await page.waitForSelector("[data-cel-widget='search_result_0']");
-    const productHandles = await page.$$(".s-main-slot .s-result-item");
-
-
-    for (const product of productHandles) {
+  while (!isLastPage) { // Loop through all pages until the last page
+    await page.waitForSelector(".quote"); // Ensure quote elements are loaded
+    const quoteHandles = await page.$$(".quote");
+  
+    for (const quoteElement of quoteHandles) {
       try {
-        const productDetails = await extractProductDetails(product);
-
-
-        const { productTitle, totalPrice, imageUrl } = productDetails;
-
-
-        if (productTitle && totalPrice && imageUrl) {
-          products.push(productDetails);
+        const quoteDetails = await extractQuoteDetails(quoteElement);
+        const { text, author } = quoteDetails; // Extract text and author from quote details
+  
+        if (text && author) {
+          quotes.push(quoteDetails);
         }
-
-
       } catch (error) {
-        console.error("Error extracting product details:", error);
+        console.error("Error extracting quote details:", error);
       }
     }
-
-
-    // Check if the "Next" button is disabled
-    await page.waitForSelector("a.s-pagination-item.s-pagination-button", {
-      visible: true,
-    });
-
-
-    isDisabled =
-      (await page.$(
-        "span.s-pagination-item.s-pagination-next.s-pagination-disabled"
-      )) !== null;
-    console.log("Pagination Disabled:", isDisabled);
-
-
-    // If not disabled, click the next button and wait for navigation
-    if (!isDisabled) {
+  
+    const nextButton = await page.$("li.next > a");
+    isLastPage = !nextButton;
+    console.log("Is Last Page:", isLastPage);
+  
+    if (!isLastPage) { // If not the last page, click the next button
       await Promise.all([
-        page.click("a.s-pagination-item.s-pagination-next"),
+        nextButton.click(), // Click the next page button
         page.waitForNavigation({
-          waitUntil: "networkidle2",
+          waitUntil: "networkidle2", // Wait for the next page to be fully loaded
         }),
       ]);
     }
   }
-
-
-  // Remove duplicates before exporting
-  const uniqueProducts = removeDuplicates(products);
-
-
-  // Export all collected products to CSV after the scraping loop completes
-  exportProductsToCsv(uniqueProducts);
-
+  
+  // Export all collected quotes to CSV after the scraping loop completes
+  console.log("Total quotes scraped:", quotes.length);
+  exportDataToCsv(quotes); // Export quotes to CSV file
 
   await browser.close();
 })();

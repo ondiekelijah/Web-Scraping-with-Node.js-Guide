@@ -2,52 +2,35 @@ const cheerio = require("cheerio");
 const {
   fetchHtmlContent,
   createFilename,
-  exportProductsToCsv,
-  extractTitle,
+  exportDataToCsv,
 } = require("../utils/scrapingUtils");
 
+const targetURL = "https://quotes.toscrape.com/";
 
-const amazonBaseUrl = "https://www.amazon.com";
-const searchUrl = "https://www.amazon.com/s?k=all+headphones";
-
-
-const scrapeAmazonProducts = async (searchUrl) => {
-  if (!searchUrl.includes(amazonBaseUrl)) {
-    console.log(
-      "Invalid URL. This address is not on the map, even Google couldn't find it."
-    );
-    process.exit(1);
-  }
-
-
+const scrapeData = async (targetURL) => {
   try {
-    const htmlContent = await fetchHtmlContent(searchUrl);
+    const htmlContent = await fetchHtmlContent(targetURL);
     const $ = cheerio.load(htmlContent);
-    const scrapedProducts = [];
+    const scrapedQuotes = [];
 
+    $(".quote").each((i, element) => {
+      const quoteElement = $(element);
+      const text = quoteElement.find(".text").text();
+      const author = quoteElement.find(".author").text();
+      const tags = [];
+      quoteElement.find(".tags .tag").each((j, tagElement) => {
+        tags.push($(tagElement).text());
+      });
 
-    $(".s-result-item").each((i, element) => {
-      const productElement = $(element);
-      const wholePrice = productElement.find(".a-price-whole").text();
-      const fractionalPrice = productElement.find(".a-price-fraction").text();
-      const totalPrice = wholePrice + fractionalPrice;
-      const imageUrl = productElement
-        .find(".a-section.aok-relative.s-image-fixed-height img.s-image")
-        .attr("src");
-      const productTitle = extractTitle(productElement, imageUrl);
-
-
-      if (productTitle && totalPrice && imageUrl) {
-        scrapedProducts.push({ productTitle, totalPrice, imageUrl });
+      if (text && author) {
+        scrapedQuotes.push({ text, author, tags });
       }
     });
 
-
-    exportProductsToCsv(scrapedProducts);
-
+    exportDataToCsv(scrapedQuotes);
 
     console.log({
-      total_products: scrapedProducts.length,
+      total_quotes: scrapedQuotes.length,
       status: "Scraping completed successfully!",
       saved_file: createFilename(),
     });
@@ -60,6 +43,5 @@ const scrapeAmazonProducts = async (searchUrl) => {
   }
 };
 
-
-// Call the scrapeAmazonProducts function with the URL
-scrapeAmazonProducts(searchUrl);
+// Call the scrapeData function with the URL
+scrapeData(targetURL);

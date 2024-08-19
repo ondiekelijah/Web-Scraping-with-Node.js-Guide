@@ -1,6 +1,5 @@
 const fs = require("fs");
 const https = require("https");
-const zlib = require("zlib");
 
 const fetchHtmlContent = (url) => {
   return new Promise((resolve, reject) => {
@@ -15,26 +14,17 @@ const fetchHtmlContent = (url) => {
           },
         },
         (response) => {
-          const encoding = response.headers["content-encoding"];
-          let stream = response;
-
-          if (encoding === "gzip") {
-            stream = response.pipe(zlib.createGunzip());
-          } else if (encoding === "deflate") {
-            stream = response.pipe(zlib.createInflate());
-          }
-
           let htmlData = "";
 
-          stream.on("data", (chunk) => {
+          response.on("data", (chunk) => {
             htmlData += chunk;
           });
 
-          stream.on("end", () => {
+          response.on("end", () => {
             resolve(htmlData);
           });
 
-          stream.on("error", (err) => {
+          response.on("error", (err) => {
             reject(err);
           });
         }
@@ -45,21 +35,6 @@ const fetchHtmlContent = (url) => {
   });
 };
 
-const extractTitle = (productElement, imageUrl) => {
-  const title = productElement
-    .find(".a-size-medium.a-color-base.a-text-normal")
-    .text();
-  if (!title) {
-    const urlSegment = imageUrl;
-    if (typeof urlSegment === "string") {
-      const strippedUrlSegment = urlSegment.split("/")[1];
-      const formattedTitle = strippedUrlSegment.replace(/-/g, " ");
-      return formattedTitle;
-    }
-  }
-  return title;
-};
-
 const createFilename = () => {
   const date = new Date();
   const filename = `${date.getFullYear()}-${
@@ -68,13 +43,14 @@ const createFilename = () => {
   return filename;
 };
 
-const exportProductsToCsv = (products) => {
+const exportDataToCsv = (quotes) => {
   const filename = createFilename();
-  let csvContent = "Title,Price,ImageURL\n";
+  let csvContent = "Text,Author,Tags\n";
 
-  products.forEach(({ productTitle, totalPrice, imageUrl }) => {
-    const sanitizedTitle = productTitle.replace(/,/g, "");
-    csvContent += `${sanitizedTitle},${totalPrice},${imageUrl}\n`;
+  quotes.forEach(({ text, author, tags }) => {
+    const sanitizedText = text.replace(/,/g, "");
+    const sanitizedTags = tags.join("|"); // Join tags with a pipe separator
+    csvContent += `"${sanitizedText}","${author}","${sanitizedTags}"\n`;
   });
 
   const folder = "data";
@@ -88,7 +64,6 @@ const exportProductsToCsv = (products) => {
 
 module.exports = {
   createFilename,
-  exportProductsToCsv,
-  extractTitle,
+  exportDataToCsv,
   fetchHtmlContent,
 };
