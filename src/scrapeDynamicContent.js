@@ -1,3 +1,4 @@
+// scrapeDynamicContent.js
 const puppeteer = require("puppeteer");
 const { exportDataToCsv } = require("../utils/scrapingUtils");
 

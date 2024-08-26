@@ -13,8 +13,7 @@ https
 
     // Handle the end of the data
     res.on("end", () => {
-      // console.log(data); // Log the data
-      console.log("Response received"); // Log confirmation message of response
+      console.log(data); // Log the data
     });
   })
   .on("error", (err) => {
