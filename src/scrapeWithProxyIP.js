@@ -2,7 +2,7 @@ const puppeteer = require("puppeteer");
 const { exportDataToCsv } = require("../utils/scrapingUtils");
 
 // List of proxy servers - you can add more working proxies here
-const proxyList = ["13.36.104.85:80"];
+const proxyList = ["101.37.12.43:8000"];
 
 // Select a random proxy from the list
 const randomProxy = proxyList[Math.floor(Math.random() * proxyList.length)];
@@ -10,24 +10,36 @@ const randomProxy = proxyList[Math.floor(Math.random() * proxyList.length)];
 (async () => {
   // Launch browser with proxy
   const browser = await puppeteer.launch({
-    headless: true, // Set to true to run in headless mode
-    defaultViewport: null, // Set the default viewport
-    args: [`--proxy-server=${randomProxy}`, "--ignore-certificate-errors"], // Apply the proxy server
+    headless: true,
+    defaultViewport: null,
+    args: [`--proxy-server=${randomProxy}`, "--ignore-certificate-errors"],
   });
 
   const page = await browser.newPage();
 
+  // Set a longer timeout for navigation
+  page.setDefaultNavigationTimeout(120000); // 2 minutes
+
   // Verify proxy IP
-  await page.goto("http://httpbin.org/ip", {
-    waitUntil: "domcontentloaded",
-  });
-  const proxyIp = await page.evaluate(() => document.body.innerText);
-  console.log("Proxy IP:", proxyIp);
+  try {
+    await page.goto("http://httpbin.org/ip", { waitUntil: "domcontentloaded" });
+    const proxyIp = await page.evaluate(() => document.body.innerText);
+    console.log("Proxy IP:", proxyIp);
+  } catch (error) {
+    console.error("Error verifying proxy IP:", error);
+  }
 
   // Navigate to the quotes page
-  await page.goto("https://quotes.toscrape.com/js/page/1/", {
-    waitUntil: "domcontentloaded",
-  });
+  try {
+    await page.goto("https://quotes.toscrape.com/js/page/1/", {
+      waitUntil: "networkidle2",
+      timeout: 120000 // 2 minutes
+    });
+  } catch (error) {
+    console.error("Error navigating to the quotes page:", error);
+    await browser.close();
+    return;
+  }
 
   let isLastPage = false;
   const quotes = [];
@@ -54,7 +66,7 @@ const randomProxy = proxyList[Math.floor(Math.random() * proxyList.length)];
 
   while (!isLastPage) {
     try {
-      await page.waitForSelector(".quote"); // Increase timeout to 60 seconds
+      await page.waitForSelector(".quote", { timeout: 60000 }); // Increase timeout to 1 minute
       const quoteHandles = await page.$$(".quote");
 
       for (const quoteElement of quoteHandles) {
@@ -76,13 +88,18 @@ const randomProxy = proxyList[Math.floor(Math.random() * proxyList.length)];
 
       if (!isLastPage) {
         await Promise.all([
-          nextButton.click(),
-          page.waitForNavigation({ waitUntil: "networkidle2" }),
+          page.click("li.next > a"),
+          page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
         ]);
       }
     } catch (error) {
       console.error("Error waiting for selector or navigating:", error);
-      break; // Exit the loop if there's an error
+      if (error.name === 'TimeoutError') {
+        console.log("Attempting to reload the page...");
+        await page.reload({ waitUntil: "networkidle2", timeout: 120000 });
+        continue; // Try again with the reloaded page
+      }
+      break; // Exit the loop for other types of errors
     }
   }
 
